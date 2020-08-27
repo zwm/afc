@@ -28,7 +28,7 @@ module afc (
     output reg                  afc_cntr_datasyn,
     output reg  [3:0]           afc_ibvco,
     output reg  [14:0]          afc_minerr,
-    output reg                  afc_finish,
+    output reg                  afc_finish
 );
 
 
@@ -95,7 +95,7 @@ reg     [6:0]                   vco_capband_opt;
 // aac
 wire                            afc_aac_2t_end;
 wire                            afc_aac_t1_end;
-wire    [3:0]                   aac_stabletime_m1;
+reg     [3:0]                   aac_stabletime_m1;
 reg                             a2d_aac_pkd_state_d1;
 reg                             a2d_aac_pkd_state_d2;
 wire                            a2d_aac_pkd_state_sync;
@@ -247,13 +247,15 @@ always @(*) begin
     case (st_curr)
         IDLE: begin
             if (afc_start) begin // tbd ??? posedge ??
-                st_next = AFC_WAIT_VCOSTABLE;
+                st_next = AFC_CAPBAND_INIT;
             end
+        end
+        AFC_CAPBAND_INIT: begin
+            st_next = AFC_WAIT_VCOSTABLE;
         end
         AFC_WAIT_VCOSTABLE: begin
             if (afc_vcostable_end)
                 st_next = AFC_CNTR_RSTN;
-            end
         end
         AFC_CNTR_RSTN: begin
             st_next = AFC_CNTR_EN_PRE;
@@ -264,10 +266,9 @@ always @(*) begin
         AFC_CNTR_EN: begin
             if (afc_cnt_end)
                 st_next = AFC_CNTR_EN_POST;
-            end
         end
         AFC_CNTR_EN_POST: begin
-            st_next = AFC_CNTR_DATASYNC;
+            st_next = AFC_CNTR_DATASYN;
         end
         AFC_CNTR_DATASYN: begin
             st_next = AFC_CAPBAND_UPDATE;
@@ -276,7 +277,7 @@ always @(*) begin
             if (afc_loop_end)
                 st_next = AFC_SET_CAPBAND_OPT;
             else
-                st_next = AFC_WAIT_VCOSTABLE;
+                st_next = AFC_CAPBAND_INIT;
         end
         AFC_SET_CAPBAND_OPT: begin
             st_next = AFC_WAIT_T1;
@@ -317,7 +318,7 @@ always @(*) begin
         end
         AFC_AAC_END_T1: begin
             if (afc_aac_t1_end)
-                st_next = AFC_WAIT_VCOSTABLE;
+                st_next = AFC_CAPBAND_INIT;
         end
         AFC_END: begin
             st_next = IDLE;
@@ -366,7 +367,7 @@ always @(posedge clk_gated or negedge rstn)
         loop_cnt <= loop_cnt + 1;
 // err
 assign err_cur                  = {1'b0, a2d_afc_ncntr} - {1'b0, ndec_reg}; // need sync?
-assign err_cur_abs              = err_cur[15] ? (err_cur[14:0] == 15'h0000 ? 15'h7ffff : (~err_cur[14:0]) + 1) : err_cur[14:0];
+assign err_cur_abs              = err_cur[15] ? (err_cur[14:0] == 15'h0000 ? 15'h7fff : ((~err_cur[14:0]) + 1)) : err_cur[14:0];
 assign err_sub                  = {1'b0, err_cur_abs} - {1'b0, err_min_abs};
 assign err_min_update           = err_sub[15];
 assign err_sign                 = err_cur[15];
@@ -400,26 +401,26 @@ always @(posedge clk_gated or negedge rstn)
     else if (st_curr == AFC_CAPBAND_INIT) begin
         if (afc_stage == 0) begin
             case (loop_cnt)
-                2'd0:       afc_vco_capband[7] <= 1;
-                2'd1:       afc_vco_capband[6] <= 1;
-                2'd2:       afc_vco_capband[5] <= 1;
-                2'd3:       afc_vco_capband[4] <= 1;
-                2'd4:       afc_vco_capband[3] <= 1;
-                2'd5:       afc_vco_capband[2] <= 1;
-                default:    afc_vco_capband[1] <= 1;
+                3'd0:       afc_vco_capband[6] <= 1;
+                3'd1:       afc_vco_capband[5] <= 1;
+                3'd2:       afc_vco_capband[4] <= 1;
+                3'd3:       afc_vco_capband[3] <= 1;
+                3'd4:       afc_vco_capband[2] <= 1;
+                3'd5:       afc_vco_capband[1] <= 1;
+                default:    afc_vco_capband[0] <= 1;
             endcase
         end
     end
     else if (st_curr == AFC_CAPBAND_UPDATE) begin
         if (afc_stage == 0 && err_sign == 1) begin
             case (loop_cnt)
-                2'd0:       afc_vco_capband[7] <= 0;
-                2'd1:       afc_vco_capband[6] <= 0;
-                2'd2:       afc_vco_capband[5] <= 0;
-                2'd3:       afc_vco_capband[4] <= 0;
-                2'd4:       afc_vco_capband[3] <= 0;
-                2'd5:       afc_vco_capband[2] <= 0;
-                default:    afc_vco_capband[1] <= 0;
+                3'd0:       afc_vco_capband[6] <= 0;
+                3'd1:       afc_vco_capband[5] <= 0;
+                3'd2:       afc_vco_capband[4] <= 0;
+                3'd3:       afc_vco_capband[3] <= 0;
+                3'd4:       afc_vco_capband[2] <= 0;
+                3'd5:       afc_vco_capband[1] <= 0;
+                default:    afc_vco_capband[0] <= 0;
             endcase
         end
         else if (afc_stage == 1) begin  // tbd ??? !!!

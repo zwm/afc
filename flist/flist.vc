@@ -1,0 +1,8 @@
+
+../rtl/gck_hvt.v
+../rtl/afc.v
+
+../tb/tb_top.v
+../tb/tb_define.v
+
+

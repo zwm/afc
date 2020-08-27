@@ -1,4 +1,5 @@
 
+// Clock Frequency: 16MHz ~ 52MHz
 
 module afc (
     input                       rstn,
@@ -12,7 +13,7 @@ module afc (
     input       [6:0]           rg_vco_capband,
     input       [1:0]           rg_afc_vcostable_time,
     input       [6:0]           rg_afc_cnt_time,
-    input       [14:0]          a2d_afc_ncntr,
+    input       [13:0]          a2d_afc_ncntr,
     // input aac
     input                       rg_aac_bypass,
     input       [1:0]           rg_aac_stable_time,
@@ -27,7 +28,7 @@ module afc (
     output reg                  afc_cntr_en,
     output reg                  afc_cntr_datasyn,
     output reg  [3:0]           afc_ibvco,
-    output reg  [14:0]          afc_minerr,
+    output reg  [13:0]          afc_minerr,
     output reg                  afc_finish
 );
 
@@ -82,13 +83,13 @@ wire                            afc_loop_end;
 reg                             ndec_en;
 reg     [2:0]                   ndec_cnt;
 reg     [22:0]                  ndec_acc; // 16 + 7 = 23
-reg     [14:0]                  ndec_reg;
+reg     [13:0]                  ndec_reg;
 reg     [22:0]                  divr_shift;
 // err
-reg     [14:0]                  err_min_abs; // abs
-wire    [15:0]                  err_cur;
-wire    [14:0]                  err_cur_abs; // abs
-wire    [15:0]                  err_sub;
+reg     [13:0]                  err_min_abs; // abs
+wire    [14:0]                  err_cur;
+wire    [13:0]                  err_cur_abs; // abs
+wire    [14:0]                  err_sub;
 wire                            err_min_update;
 wire                            err_sign;
 reg     [6:0]                   vco_capband_opt;
@@ -223,7 +224,7 @@ always @(posedge clk_gated or negedge rstn)
     else if (ndec_en) begin
         if (ndec_cnt == 3'h7) begin // end of calculation
             ndec_en <= 0;
-            ndec_reg <= ndec_acc[7] ? (ndec_acc[22:8] + 1) : ndec_acc[22:8]; // round
+            ndec_reg <= ndec_acc[7] ? (ndec_acc[21:8] + 1) : ndec_acc[21:8]; // round
         end
         else begin
             ndec_cnt <= ndec_cnt + 1;
@@ -367,22 +368,22 @@ always @(posedge clk_gated or negedge rstn)
         loop_cnt <= loop_cnt + 1;
 // err
 assign err_cur                  = {1'b0, a2d_afc_ncntr} - {1'b0, ndec_reg}; // need sync?
-assign err_cur_abs              = err_cur[15] ? (err_cur[14:0] == 15'h0000 ? 15'h7fff : ((~err_cur[14:0]) + 1)) : err_cur[14:0];
+assign err_cur_abs              = err_cur[14] ? ((err_cur[13:0] == 14'h0000) ? 14'h3fff : ((~err_cur[13:0]) + 1)) : err_cur[13:0];
 assign err_sub                  = {1'b0, err_cur_abs} - {1'b0, err_min_abs};
-assign err_min_update           = err_sub[15];
-assign err_sign                 = err_cur[15];
+assign err_min_update           = err_sub[14];
+assign err_sign                 = err_cur[14];
 // err_min_abs & afc_capband_opt
 always @(posedge clk_gated or negedge rstn)
     if (~rstn) begin
-        err_min_abs <= 15'h7fff;
+        err_min_abs <= 14'h3fff;
         vco_capband_opt <= 7'b100_0000;
     end
     else if (st_curr == IDLE && afc_start) begin // init of afc1
-        err_min_abs <= 15'h7fff;
+        err_min_abs <= 14'h3fff;
         vco_capband_opt <= 7'b100_0000;
     end
     else if (st_curr == AFC_AAC_END_T1 && afc_aac_t1_end) begin // init of afc2
-        err_min_abs <= 15'h7fff;
+        err_min_abs <= 14'h3fff;
         //vco_capband_opt <= 7'b100_0000;
     end
     else if (st_curr == AFC_CAPBAND_UPDATE) begin // update
@@ -485,7 +486,7 @@ always @(posedge clk_gated or negedge rstn)
     if (~rstn)
         afc_minerr <= 0;
     else if (rg_forceband_en_sync)
-        afc_minerr <= 15'h5555;
+        afc_minerr <= 14'h1555;
     else if (st_curr == AFC_END)
         afc_minerr <= err_min_abs;
 // a2d_aac_pkd_state_dly

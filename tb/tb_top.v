@@ -13,7 +13,7 @@ reg                         rg_forceband_en;
 reg         [6:0]           rg_vco_capband;
 reg         [1:0]           rg_afc_vcostable_time;
 reg         [6:0]           rg_afc_cnt_time;
-reg         [14:0]          a2d_afc_ncntr;
+reg         [13:0]          a2d_afc_ncntr;
 reg                         rg_aac_bypass;
 reg         [1:0]           rg_aac_stable_time;
 reg         [1:0]           rg_aac_cbandrange;
@@ -26,16 +26,27 @@ wire                        afc_cntr_rstn;
 wire                        afc_cntr_en;
 wire                        afc_cntr_datasyn;
 wire        [3:0]           afc_ibvco;
-wire        [14:0]          afc_minerr;
+wire        [13:0]          afc_minerr;
 wire                        afc_finish;
+// global
+integer err_cnt, chk_cnt;
+reg [48*8-1:0] log_dir;
+reg         [6:0]           target_vco_capband;
+reg [13:0] ncntr_table [255:0];
 
 // main
 initial begin
     sys_init;
     #50_000;
-    afc_start;
 
-    #1000_000;
+    // start sim
+    main_loop;
+
+    // disp
+    #1_000;
+    disp_sum;
+
+    #1_000;
     $finish;
 end
 
@@ -68,11 +79,20 @@ afc u_afc (
     .afc_finish                 ( afc_finish                    )
 );
 
+// ncntr logic
+always @(posedge clk or negedge rstn)
+    if (~rstn)
+        a2d_afc_ncntr <= {$random}%(2**14);
+    else if (afc_cntr_rstn)
+        a2d_afc_ncntr <= {$random}%(2**14);
+    else if (afc_cntr_datasyn)
+        a2d_afc_ncntr <= ncntr_table[{trx, afc_vco_capband}];
 // fsdb
 `ifdef DUMP_FSDB
 initial begin
     $fsdbDumpfile("tb_top.fsdb");
     $fsdbDumpvars(0, tb_top);
+    //$fsdbDumpMDA();
 end
 `endif
 
@@ -99,21 +119,51 @@ end
 // sys_init
 task sys_init;
     begin
-        afc_cg_auto             = 1;
+        chk_cnt                 = 0;
+        err_cnt                 = 0;
+        afc_cg_auto             = 0;
         afc_en                  = 0;
         trx                     = 0;
-        divr                    = 64;
+        divr                    = 0;
         rg_forceband_en         = 0;
         rg_vco_capband          = 0;
-        rg_afc_vcostable_time   = 2;
-        rg_afc_cnt_time         = 128;
-        a2d_afc_ncntr           = 99;
-        rg_aac_bypass           = 1;
+        rg_afc_vcostable_time   = 0;
+        rg_afc_cnt_time         = 0;
+        a2d_afc_ncntr           = 0;
+        rg_aac_bypass           = 0;
         rg_aac_stable_time      = 0;
         rg_aac_cbandrange       = 0;
         rg_ini_ibsel_rx         = 0;
         rg_ini_ibsel_tx         = 0;
         a2d_aac_pkd_state       = 0;
+    end
+endtask
+
+task main_loop;
+    integer fp, ret, i, j, k, tmp;
+    begin
+        // openfile
+        fp = $fopen(`FILE_CASE_LIST, "r");
+        // case loop
+        begin: CASE_LOOP
+            while(1) begin
+                ret = $fscanf(fp, "%s", log_dir);
+                if (ret != 1) begin
+                    $display("%t, CASE_LIST FILE: %s, read end, simulation finish!", $time, `FILE_CASE_LIST);
+                    disable CASE_LOOP;
+                end
+                $display("%t, CASE_LIST FILE: %s, ret: %d, log_dir: %s", $time, `FILE_CASE_LIST, ret, log_dir);
+                // load_cfg
+                load_cfg;
+                load_ncntr;
+                afc_start;
+                repeat(10) @(posedge clk);
+                afc_check;
+                #1000;
+            end
+        end
+        // close file
+        $fclose(fp);
     end
 endtask
 
@@ -126,5 +176,76 @@ task afc_start;
     end
 endtask
 
+task load_cfg;
+    integer fp, ret, i, j, k, tmp;
+    reg [32*8-1:0] str;
+    begin
+        fp = $fopen({log_dir, "/", `FILE_CFG}, "r");
+        ret = $fscanf(fp, "%s %d", str, target_vco_capband);
+        ret = $fscanf(fp, "%s %d", str, trx);
+        ret = $fscanf(fp, "%s %x", str, divr);
+        ret = $fscanf(fp, "%s %d", str, afc_cg_auto);
+        ret = $fscanf(fp, "%s %d", str, rg_forceband_en);
+        ret = $fscanf(fp, "%s %d", str, rg_vco_capband);
+        ret = $fscanf(fp, "%s %d", str, rg_afc_vcostable_time);
+        ret = $fscanf(fp, "%s %d", str, rg_afc_cnt_time);
+        ret = $fscanf(fp, "%s %d", str, rg_aac_bypass);
+        ret = $fscanf(fp, "%s %d", str, rg_aac_stable_time);
+        ret = $fscanf(fp, "%s %d", str, rg_aac_cbandrange);
+        ret = $fscanf(fp, "%s %d", str, rg_ini_ibsel_rx);
+        ret = $fscanf(fp, "%s %d", str, rg_ini_ibsel_tx);
+        $fclose(fp);
+    end
+endtask
+
+task load_ncntr;
+    begin
+        if (rg_afc_cnt_time == 19) begin
+            $readmemb({`LOG_DIR, "/", `NCNTR_M19}, ncntr_table);
+        end
+        else if (rg_afc_cnt_time == 64) begin
+            $readmemb({`LOG_DIR, "/", `NCNTR_M64}, ncntr_table);
+        end
+    end
+endtask
+
+task afc_check;
+    begin
+        begin: WAIT_FINISH
+            while(1) begin
+                @(posedge clk);
+                if (afc_finish) begin
+                    disable WAIT_FINISH;
+                end
+            end
+        end
+        @(posedge clk);
+        if (afc_vco_capband !== target_vco_capband) begin
+            err_cnt = err_cnt + 1;
+            $display("%t, check err!", $time);
+        end
+        else begin
+            $display("%t, check pass.", $time);
+        end
+        chk_cnt = chk_cnt + 1;
+    end
+endtask
+
+task disp_sum;
+    begin
+        $display("---------------------------------------------------");
+        $display("---------------------------------------------------");
+        $display("---------------------------------------------------");
+        $display("  chk_cnt: %d", chk_cnt);
+        if (err_cnt == 0) begin
+            $display("      PASS.");
+        end
+        else begin
+            $display("  err_cnt: %d", err_cnt);
+            $display("      FAIL!");
+        end
+        $display("---------------------------------------------------");
+    end
+endtask
 endmodule
 

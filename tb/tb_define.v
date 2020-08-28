@@ -2,7 +2,9 @@
 `define DUMP_FSDB               1
 //`define DUMP_ARRAY              1
 
-`define CASE_START              404
+`define CASE_START              0
+//`define CASE_START              201             // AFC RX: 0~201
+//`define CASE_START              404             // AAC: 404~404+31
 `define CASE_STOP               (404 + 31)
 
 `define LOG_DIR                 "../log"

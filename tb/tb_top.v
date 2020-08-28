@@ -93,7 +93,9 @@ always @(posedge clk or negedge rstn)
 initial begin
     $fsdbDumpfile("tb_top.fsdb");
     $fsdbDumpvars(0, tb_top);
-    $fsdbDumpMDA();
+    `ifdef DUMP_ARRAY
+        $fsdbDumpMDA();
+    `endif
 end
 `endif
 
@@ -155,17 +157,19 @@ task main_loop;
                     disable CASE_LOOP;
                 end
                 //$display("%t, CASE_LIST FILE: %s, ret: %d, log_dir: %s", $time, `FILE_CASE_LIST, ret, log_dir);
-                // load_cfg
-                load_cfg;
-                load_ncntr;
-                afc_start;
-                repeat(10) @(posedge clk);
-                fork
-                    afc_check;
-                    ndec_check;
-                join
-                #200;
+                if ((case_num >= `CASE_START) && (case_num <= `CASE_STOP)) begin
+                    // load_cfg
+                    load_cfg;
+                    load_ncntr;
+                    afc_start;
+                    repeat(10) @(posedge clk);
+                    fork
+                        afc_check;
+                        ndec_check;
+                    join
+                end
                 case_num = case_num + 1;
+                #200;
             end
         end
         // close file
@@ -226,7 +230,9 @@ task afc_check;
             end
         end
         @(posedge clk);
-        if (afc_vco_capband !== target_vco_capband) begin
+        if ((afc_vco_capband !== (target_vco_capband    )) &&
+            (afc_vco_capband !== (target_vco_capband - 1)) &&
+            (afc_vco_capband !== (target_vco_capband + 1))) begin
             err_cnt = err_cnt + 1;
             $display("%t, case_num: %d, log_dir: %s", $time, case_num, log_dir);
             $display("    afc_vco_capband check fail, afc: %d, log:%d", afc_vco_capband, target_vco_capband);

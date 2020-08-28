@@ -88,6 +88,37 @@ always @(posedge clk or negedge rstn)
         a2d_afc_ncntr <= {$random}%(2**14);
     else if (afc_cntr_datasyn)
         a2d_afc_ncntr <= ncntr_table[ncntr_index];
+
+// a2d_aac_pkd_state
+reg [3:0] a2d_cnt;
+reg [3:0] a2d_tmp;
+always @(posedge clk or negedge rstn)
+    if (~rstn) begin
+        a2d_aac_pkd_state <= 0;
+        a2d_cnt <= 0;
+    end
+    else if (`AFC_TOP.st_curr == 9) begin
+        //a2d_tmp = {$random}%16;
+        a2d_tmp = 10;
+        if (a2d_tmp == 0) begin
+            a2d_aac_pkd_state <= 0;
+            a2d_cnt <= 0;
+        end
+        else begin
+            a2d_aac_pkd_state <= 1;
+            a2d_cnt <= a2d_tmp;
+        end
+    end
+    else if (`AFC_TOP.st_curr == 12) begin
+        if (a2d_cnt == 0) begin
+            a2d_aac_pkd_state <= 0;
+            a2d_cnt <= 0;
+        end
+        else begin
+            a2d_cnt <= a2d_cnt - 1;
+        end
+    end
+
 // fsdb
 `ifdef DUMP_FSDB
 initial begin
@@ -167,9 +198,9 @@ task main_loop;
                         afc_check;
                         ndec_check;
                     join
+                    #200;
                 end
                 case_num = case_num + 1;
-                #200;
             end
         end
         // close file
@@ -230,7 +261,7 @@ task afc_check;
             end
         end
         @(posedge clk);
-        if ((afc_vco_capband !== (target_vco_capband    )) &&
+        if ((afc_vco_capband !== (target_vco_capband    )) &&       // jingdu wenti, may have one capband mistake!!!
             (afc_vco_capband !== (target_vco_capband - 1)) &&
             (afc_vco_capband !== (target_vco_capband + 1))) begin
             err_cnt = err_cnt + 1;

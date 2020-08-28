@@ -2,8 +2,8 @@
 `define DUMP_FSDB               1
 //`define DUMP_ARRAY              1
 
-`define CASE_START              0
-`define CASE_STOP               500
+`define CASE_START              404
+`define CASE_STOP               (404 + 31)
 
 `define LOG_DIR                 "../log"
 `define FILE_CASE_LIST          "./case_list"

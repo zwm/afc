@@ -317,7 +317,7 @@ always @(*) begin
                 st_next = AFC_AAC_IBVCO_UPDATE;
         end
         AFC_AAC_IBVCO_UPDATE: begin
-            if (a2d_aac_pkd_state_sync)
+            if (a2d_aac_pkd_state_sync == 0)
                 st_next = AFC_AAC_END_T1;
             else if (afc_ibvco == 4'h0)
                 st_next = AFC_AAC_END_T1;
@@ -519,10 +519,10 @@ always @(posedge clk_gated or negedge rstn)
     else if (st_curr == IDLE && afc_start) // init
         afc_ibvco <= afc_ibvco_init;
     else if (st_curr == AFC_AAC_IBVCO_UPDATE) begin // update
-        if (a2d_aac_pkd_state_sync == 1) begin
+        if (a2d_aac_pkd_state_sync == 0) begin // finish
             afc_ibvco <= (afc_ibvco == 4'b1111) ? 4'b1111 : (afc_ibvco + 1);
         end
-        else if (a2d_aac_pkd_state_sync == 0 && afc_ibvco != 0) begin
+        else if (a2d_aac_pkd_state_sync == 1 && afc_ibvco != 0) begin // update
             afc_ibvco <= afc_ibvco - 1;
         end
     end

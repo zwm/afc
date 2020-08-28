@@ -1,0 +1,13 @@
+vcoband                 95
+trx                     1
+divr                    3d89
+afc_cg_auto             1
+rg_forceband_en         0
+rg_vco_capband          0
+rg_afc_vcostable_time   1
+rg_afc_cnt_time         63
+rg_aac_bypass           1
+rg_aac_stable_time      0
+rg_aac_cbandrange       0
+rg_ini_ibsel_rx         5
+rg_ini_ibsel_tx         9

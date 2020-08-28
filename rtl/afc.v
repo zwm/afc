@@ -83,6 +83,7 @@ wire                            afc_loop_end;
 reg                             ndec_en;
 reg     [2:0]                   ndec_cnt;
 reg     [22:0]                  ndec_acc; // 16 + 7 = 23
+wire    [22:0]                  ndec_acc_next;
 reg     [13:0]                  ndec_reg;
 reg     [22:0]                  divr_shift;
 // err
@@ -101,6 +102,7 @@ reg                             a2d_aac_pkd_state_d1;
 reg                             a2d_aac_pkd_state_d2;
 wire                            a2d_aac_pkd_state_sync;
 wire    [3:0]                   afc_ibvco_init;
+wire    [7:0]                   m;
 
 //---------------------------------------------------------------------------
 // Sync & Cg
@@ -183,7 +185,7 @@ always @(*)
         default:    aac_stabletime_m1 = 4'd15;
     endcase
 // afc_loop_end
-assign afc_loop_end             = (loop_cnt == (afc_stage ? ({1'b0, rg_aac_cbandrange[1:0]} + 3'h1) : 3'h7));
+assign afc_loop_end             = (loop_cnt == (afc_stage ? ({1'b0, rg_aac_cbandrange[1:0]} + 3'h1) : 3'h6));
 // afc_vcostable_end
 assign afc_vcostable_end        = (temp_cnt == {3'h0, vcostable_time_m1});
 // afc_cnt_end
@@ -197,16 +199,21 @@ assign afc_ibvco_init           = trx ? rg_ini_ibsel_tx : rg_ini_ibsel_rx;
 //---------------------------------------------------------------------------
 // N_DEC
 //---------------------------------------------------------------------------
+// m
+assign m                        = {1'b0, rg_afc_cnt_time[6:0]} + 1;
+// ndec_acc_next
+assign ndec_acc_next            = ndec_acc + divr_shift; // acc
 // divr_shift
 always @(*)
     case (ndec_cnt)
-        3'd0:       divr_shift = rg_afc_cnt_time[0] ? {7'h0, divr      } : 23'h0;
-        3'd1:       divr_shift = rg_afc_cnt_time[1] ? {6'h0, divr, 1'h0} : 23'h0;
-        3'd2:       divr_shift = rg_afc_cnt_time[2] ? {5'h0, divr, 2'h0} : 23'h0;
-        3'd3:       divr_shift = rg_afc_cnt_time[3] ? {4'h0, divr, 3'h0} : 23'h0;
-        3'd4:       divr_shift = rg_afc_cnt_time[4] ? {3'h0, divr, 4'h0} : 23'h0;
-        3'd5:       divr_shift = rg_afc_cnt_time[5] ? {2'h0, divr, 5'h0} : 23'h0;
-        default:    divr_shift = rg_afc_cnt_time[6] ? {1'h0, divr, 6'h0} : 23'h0;
+        3'd0:       divr_shift = m[0] ? {7'h0, divr      } : 23'h0;
+        3'd1:       divr_shift = m[1] ? {6'h0, divr, 1'h0} : 23'h0;
+        3'd2:       divr_shift = m[2] ? {5'h0, divr, 2'h0} : 23'h0;
+        3'd3:       divr_shift = m[3] ? {4'h0, divr, 3'h0} : 23'h0;
+        3'd4:       divr_shift = m[4] ? {3'h0, divr, 4'h0} : 23'h0;
+        3'd5:       divr_shift = m[5] ? {2'h0, divr, 5'h0} : 23'h0;
+        3'd6:       divr_shift = m[6] ? {1'h0, divr, 6'h0} : 23'h0;
+        default:    divr_shift = m[7] ? {      divr, 7'h0} : 23'h0;
     endcase
 // n_dec
 always @(posedge clk_gated or negedge rstn)
@@ -224,11 +231,11 @@ always @(posedge clk_gated or negedge rstn)
     else if (ndec_en) begin
         if (ndec_cnt == 3'h7) begin // end of calculation
             ndec_en <= 0;
-            ndec_reg <= ndec_acc[7] ? (ndec_acc[21:8] + 1) : ndec_acc[21:8]; // round
+            ndec_reg <= ndec_acc_next[7] ? (ndec_acc_next[21:8] + 1) : ndec_acc_next[21:8]; // round
         end
         else begin
             ndec_cnt <= ndec_cnt + 1;
-            ndec_acc <= ndec_acc + divr_shift; // acc
+            ndec_acc <= ndec_acc_next;
         end
     end
 //---------------------------------------------------------------------------
@@ -395,25 +402,18 @@ always @(posedge clk_gated or negedge rstn)
 // afc_vco_capband
 always @(posedge clk_gated or negedge rstn)
     if (~rstn)
-        afc_vco_capband <= 1'b1;
+        afc_vco_capband <= 7'b100_0000;
     else if (rg_forceband_en_sync) begin
         afc_vco_capband <= rg_vco_capband;
     end
+    else if (st_curr == IDLE && afc_start) begin
+        afc_vco_capband <= 7'b100_0000;
+    end
     else if (st_curr == AFC_CAPBAND_INIT) begin
-        if (afc_stage == 0) begin
-            case (loop_cnt)
-                3'd0:       afc_vco_capband[6] <= 1;
-                3'd1:       afc_vco_capband[5] <= 1;
-                3'd2:       afc_vco_capband[4] <= 1;
-                3'd3:       afc_vco_capband[3] <= 1;
-                3'd4:       afc_vco_capband[2] <= 1;
-                3'd5:       afc_vco_capband[1] <= 1;
-                default:    afc_vco_capband[0] <= 1;
-            endcase
-        end
     end
     else if (st_curr == AFC_CAPBAND_UPDATE) begin
-        if (afc_stage == 0 && err_sign == 1) begin
+        // stage 0
+        if (afc_stage == 0 && err_sign == 1) begin // current state modify
             case (loop_cnt)
                 3'd0:       afc_vco_capband[6] <= 0;
                 3'd1:       afc_vco_capband[5] <= 0;
@@ -421,10 +421,21 @@ always @(posedge clk_gated or negedge rstn)
                 3'd3:       afc_vco_capband[3] <= 0;
                 3'd4:       afc_vco_capband[2] <= 0;
                 3'd5:       afc_vco_capband[1] <= 0;
-                default:    afc_vco_capband[0] <= 0;
+                3'd6:       afc_vco_capband[0] <= 0;
             endcase
         end
-        else if (afc_stage == 1) begin  // tbd ??? !!!
+        if (afc_stage == 0) begin // next state update
+            case (loop_cnt)
+                3'd0:       afc_vco_capband[5] <= 1;
+                3'd1:       afc_vco_capband[4] <= 1;
+                3'd2:       afc_vco_capband[3] <= 1;
+                3'd3:       afc_vco_capband[2] <= 1;
+                3'd4:       afc_vco_capband[1] <= 1;
+                3'd5:       afc_vco_capband[0] <= 1;
+            endcase
+        end
+        // stage 1
+        if (afc_stage == 1) begin  // tbd ??? !!!
             if (err_sign)
                 afc_vco_capband <= afc_vco_capband - 1;
             else

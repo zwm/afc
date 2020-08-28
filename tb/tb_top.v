@@ -29,7 +29,7 @@ wire        [3:0]           afc_ibvco;
 wire        [13:0]          afc_minerr;
 wire                        afc_finish;
 // global
-integer err_cnt, chk_cnt;
+integer err_cnt, chk_cnt, case_num;
 reg [48*8-1:0] log_dir;
 reg         [6:0]           target_vco_capband;
 reg [13:0] ncntr_table [255:0];
@@ -37,7 +37,7 @@ reg [13:0] ncntr_table [255:0];
 // main
 initial begin
     sys_init;
-    #50_000;
+    #1_000;
 
     // start sim
     main_loop;
@@ -80,19 +80,20 @@ afc u_afc (
 );
 
 // ncntr logic
+wire [7:0] ncntr_index = {trx, afc_vco_capband};
 always @(posedge clk or negedge rstn)
     if (~rstn)
         a2d_afc_ncntr <= {$random}%(2**14);
-    else if (afc_cntr_rstn)
+    else if (~afc_cntr_rstn)
         a2d_afc_ncntr <= {$random}%(2**14);
     else if (afc_cntr_datasyn)
-        a2d_afc_ncntr <= ncntr_table[{trx, afc_vco_capband}];
+        a2d_afc_ncntr <= ncntr_table[ncntr_index];
 // fsdb
 `ifdef DUMP_FSDB
 initial begin
     $fsdbDumpfile("tb_top.fsdb");
     $fsdbDumpvars(0, tb_top);
-    //$fsdbDumpMDA();
+    $fsdbDumpMDA();
 end
 `endif
 
@@ -119,6 +120,7 @@ end
 // sys_init
 task sys_init;
     begin
+        case_num                = 0;
         chk_cnt                 = 0;
         err_cnt                 = 0;
         afc_cg_auto             = 0;
@@ -152,14 +154,18 @@ task main_loop;
                     $display("%t, CASE_LIST FILE: %s, read end, simulation finish!", $time, `FILE_CASE_LIST);
                     disable CASE_LOOP;
                 end
-                $display("%t, CASE_LIST FILE: %s, ret: %d, log_dir: %s", $time, `FILE_CASE_LIST, ret, log_dir);
+                //$display("%t, CASE_LIST FILE: %s, ret: %d, log_dir: %s", $time, `FILE_CASE_LIST, ret, log_dir);
                 // load_cfg
                 load_cfg;
                 load_ncntr;
                 afc_start;
                 repeat(10) @(posedge clk);
-                afc_check;
-                #1000;
+                fork
+                    afc_check;
+                    ndec_check;
+                join
+                #200;
+                case_num = case_num + 1;
             end
         end
         // close file
@@ -200,10 +206,10 @@ endtask
 
 task load_ncntr;
     begin
-        if (rg_afc_cnt_time == 19) begin
+        if (rg_afc_cnt_time == 18) begin
             $readmemb({`LOG_DIR, "/", `NCNTR_M19}, ncntr_table);
         end
-        else if (rg_afc_cnt_time == 64) begin
+        else if (rg_afc_cnt_time == 63) begin
             $readmemb({`LOG_DIR, "/", `NCNTR_M64}, ncntr_table);
         end
     end
@@ -222,12 +228,33 @@ task afc_check;
         @(posedge clk);
         if (afc_vco_capband !== target_vco_capband) begin
             err_cnt = err_cnt + 1;
-            $display("%t, check err!", $time);
+            $display("%t, case_num: %d, log_dir: %s", $time, case_num, log_dir);
+            $display("    afc_vco_capband check fail, afc: %d, log:%d", afc_vco_capband, target_vco_capband);
         end
         else begin
-            $display("%t, check pass.", $time);
+            //$display("%t, case_num: %d, afc_vco_capband: %d, check pass.", $time, case_num, afc_vco_capband);
         end
         chk_cnt = chk_cnt + 1;
+    end
+endtask
+
+task ndec_check;
+    integer tmp;
+    reg [22:0] mult;
+    reg [13:0] chk;
+    begin
+        mult = divr[15:0]*(rg_afc_cnt_time[6:0] + 1);
+        chk = mult[7] ? mult[21:8] + 1 : mult[21:8];
+        wait(`AFC_TOP.st_curr == 8);
+        if (`AFC_TOP.ndec_reg[13:0] !== chk[13:0]) begin
+            err_cnt = err_cnt + 1;
+            $display("%t, case_num: %d, log_dir: %s", $time, case_num, log_dir);
+            $display("    ndec check fail, afc: %04x, log:%04x", `AFC_TOP.ndec_reg[13:0], chk[13:0]);
+        end
+        else begin
+            //$display("%t, case_num: %d, ndec: %04x, check pass.", $time, case_num, chk[13:0]);
+        end
+
     end
 endtask
 

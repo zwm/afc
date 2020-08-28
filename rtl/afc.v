@@ -111,13 +111,11 @@ wire    [7:0]                   m;
 always @(posedge clk or negedge rstn)
     if (~rstn) begin
         afc_en_dly              <= 0;
-        afc_en_sync_d1          <= 0;
         afc_cg_auto_dly         <= 0;
         rg_forceband_en_dly     <= 0;
     end
     else begin
         afc_en_dly              <= {afc_en_dly[0],              afc_en};
-        afc_en_sync_d1          <= afc_en_sync;
         afc_cg_auto_dly         <= {afc_cg_auto_dly[0],         afc_cg_auto};
         rg_forceband_en_dly     <= {rg_forceband_en_dly[0],     rg_forceband_en};
     end

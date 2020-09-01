@@ -411,7 +411,7 @@ always @(posedge clk_gated or negedge rstn)
     end
     else if (st_curr == AFC_CAPBAND_UPDATE) begin
         // stage 0
-        if (afc_stage == 0 && err_sign == 1) begin // current state modify
+        if (afc_stage == 0 && err_sign == 1 && afc_loop_end == 0) begin // current state modify
             case (loop_cnt)
                 3'd0:       afc_vco_capband[6] <= 0;
                 3'd1:       afc_vco_capband[5] <= 0;
@@ -419,10 +419,10 @@ always @(posedge clk_gated or negedge rstn)
                 3'd3:       afc_vco_capband[3] <= 0;
                 3'd4:       afc_vco_capband[2] <= 0;
                 3'd5:       afc_vco_capband[1] <= 0;
-                3'd6:       afc_vco_capband[0] <= 0;
+                //3'd6:       afc_vco_capband[0] <= 0; // last loop, do not update afc_vco_capband
             endcase
         end
-        if (afc_stage == 0) begin // next state update
+        if (afc_stage == 0 && afc_loop_end == 0) begin // next state update
             case (loop_cnt)
                 3'd0:       afc_vco_capband[5] <= 1;
                 3'd1:       afc_vco_capband[4] <= 1;
@@ -430,10 +430,11 @@ always @(posedge clk_gated or negedge rstn)
                 3'd3:       afc_vco_capband[2] <= 1;
                 3'd4:       afc_vco_capband[1] <= 1;
                 3'd5:       afc_vco_capband[0] <= 1;
+                // 3'd6: // last loop, do not update afc_vco_capband
             endcase
         end
         // stage 1
-        if (afc_stage == 1) begin  // tbd ??? !!!
+        if (afc_stage == 1 && afc_loop_end == 0) begin // last loop do not update afc_vco_capband
             if (err_sign)
                 afc_vco_capband <= afc_vco_capband - 1;
             else

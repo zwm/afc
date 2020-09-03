@@ -6,7 +6,9 @@ module tb_top();
 reg                         rstn;
 reg                         clk;
 reg                         afc_cg_auto;
-reg                         afc_en;
+reg                         afc_start;
+reg                         cdb_afc_start;
+reg                         cdb_bypass;
 reg                         trx;
 reg         [15:0]          divr;
 reg                         rg_forceband_en;
@@ -17,15 +19,19 @@ reg         [13:0]          a2d_afc_ncntr;
 reg                         rg_aac_bypass;
 reg         [1:0]           rg_aac_stable_time;
 reg         [1:0]           rg_aac_cbandrange;
-reg         [3:0]           rg_ini_ibsel_rx; // afc_ibvco initial val
-reg         [3:0]           rg_ini_ibsel_tx; // afc_ibvco initial val
+reg         [3:0]           rg_ini_ibsel_rx; // aac_ibvco initial val
+reg         [3:0]           rg_ini_ibsel_tx; // aac_ibvco initial val
+reg         [1:0]           rg_aac_vrefsel_rx;
+reg         [1:0]           rg_aac_vrefsel_tx;
 reg                         a2d_aac_pkd_state;
 wire                        afc_openloop_en;
 wire        [6:0]           afc_vco_capband;
 wire                        afc_cntr_rstn;
 wire                        afc_cntr_en;
 wire                        afc_cntr_datasyn;
-wire        [3:0]           afc_ibvco;
+wire        [3:0]           aac_ibvco;
+wire                        aac_comp_en;
+wire        [1:0]           aac_comp_vref;
 wire        [13:0]          afc_minerr;
 wire                        afc_finish;
 // global
@@ -55,7 +61,9 @@ afc u_afc (
     .rstn                       ( rstn                          ),
     .clk                        ( clk                           ),
     .afc_cg_auto                ( afc_cg_auto                   ),
-    .afc_en                     ( afc_en                        ),
+    .afc_start                  ( afc_start                     ),
+    .cdb_afc_start              ( cdb_afc_start                 ),
+    .cdb_bypass                 ( cdb_bypass                    ),
     .trx                        ( trx                           ),
     .divr                       ( divr                          ),
     .rg_forceband_en            ( rg_forceband_en               ),
@@ -68,13 +76,17 @@ afc u_afc (
     .rg_aac_cbandrange          ( rg_aac_cbandrange             ),
     .rg_ini_ibsel_rx            ( rg_ini_ibsel_rx               ),
     .rg_ini_ibsel_tx            ( rg_ini_ibsel_tx               ),
+    .rg_aac_vrefsel_tx          ( rg_aac_vrefsel_tx             ),
+    .rg_aac_vrefsel_rx          ( rg_aac_vrefsel_rx             ),
     .a2d_aac_pkd_state          ( a2d_aac_pkd_state             ),
     .afc_openloop_en            ( afc_openloop_en               ),
     .afc_vco_capband            ( afc_vco_capband               ),
     .afc_cntr_rstn              ( afc_cntr_rstn                 ),
     .afc_cntr_en                ( afc_cntr_en                   ),
     .afc_cntr_datasyn           ( afc_cntr_datasyn              ),
-    .afc_ibvco                  ( afc_ibvco                     ),
+    .aac_ibvco                  ( aac_ibvco                     ),
+    .aac_comp_en                ( aac_comp_en                   ),
+    .aac_comp_vref              ( aac_comp_vref                 ),
     .afc_minerr                 ( afc_minerr                    ),
     .afc_finish                 ( afc_finish                    )
 );
@@ -157,7 +169,9 @@ task sys_init;
         chk_cnt                 = 0;
         err_cnt                 = 0;
         afc_cg_auto             = 0;
-        afc_en                  = 0;
+        afc_start               = 0;
+        cdb_afc_start           = 0;
+        cdb_bypass              = 1;
         trx                     = 0;
         divr                    = 0;
         rg_forceband_en         = 0;
@@ -170,6 +184,8 @@ task sys_init;
         rg_aac_cbandrange       = 0;
         rg_ini_ibsel_rx         = 0;
         rg_ini_ibsel_tx         = 0;
+        rg_aac_vrefsel_tx       = 1;
+        rg_aac_vrefsel_rx       = 2;
         a2d_aac_pkd_state       = 0;
     end
 endtask
@@ -192,7 +208,7 @@ task main_loop;
                     // load_cfg
                     load_cfg;
                     load_ncntr;
-                    afc_start;
+                    afc_trigger;
                     repeat(10) @(posedge clk);
                     fork
                         afc_check;
@@ -208,12 +224,12 @@ task main_loop;
     end
 endtask
 
-task afc_start;
+task afc_trigger;
     begin
         @(posedge clk);
-        afc_en = 1;
+        afc_start = 1;
         repeat(10) @(posedge clk);
-        afc_en = 0;
+        afc_start = 0;
     end
 endtask
 

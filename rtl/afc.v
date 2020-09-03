@@ -6,7 +6,9 @@ module afc (
     input                       clk,
     // input afc
     input                       afc_cg_auto,
-    input                       afc_en,
+    input                       afc_start,
+    input                       cdb_afc_start,
+    input                       cdb_bypass,
     input                       trx,
     input       [15:0]          divr,
     input                       rg_forceband_en,
@@ -18,8 +20,10 @@ module afc (
     input                       rg_aac_bypass,
     input       [1:0]           rg_aac_stable_time,
     input       [1:0]           rg_aac_cbandrange,
-    input       [3:0]           rg_ini_ibsel_rx, // afc_ibvco initial val
-    input       [3:0]           rg_ini_ibsel_tx, // afc_ibvco initial val
+    input       [3:0]           rg_ini_ibsel_rx, // aac_ibvco initial val
+    input       [3:0]           rg_ini_ibsel_tx, // aac_ibvco initial val
+    input       [1:0]           rg_aac_vrefsel_rx,
+    input       [1:0]           rg_aac_vrefsel_tx,
     input                       a2d_aac_pkd_state,
     // output
     output reg                  afc_openloop_en,
@@ -27,27 +31,30 @@ module afc (
     output reg                  afc_cntr_rstn,
     output reg                  afc_cntr_en,
     output reg                  afc_cntr_datasyn,
-    output reg  [3:0]           afc_ibvco,
     output reg  [13:0]          afc_minerr,
-    output reg                  afc_finish
+    output reg                  afc_finish,
+    output reg  [3:0]           aac_ibvco,
+    output reg                  aac_comp_en,
+    output      [1:0]           aac_comp_vref
 );
 
 
 // ctrl sync
-reg     [1:0]                   afc_en_dly;
+wire                            afc_start_mux;
+reg     [1:0]                   afc_start_dly;
 reg     [1:0]                   afc_cg_auto_dly;
 reg     [1:0]                   rg_forceband_en_dly;
-reg                             afc_en_sync_d1;
-wire                            afc_en_sync;
+reg                             afc_start_sync_d1;
+wire                            afc_start_sync;
 wire                            afc_cg_auto_sync;
 wire                            rg_forceband_en_sync;
-wire                            afc_en_pos;
-reg                             afc_en_pos_d1;
-reg                             afc_en_pos_d2;
+wire                            afc_start_pos;
+reg                             afc_start_pos_d1;
+reg                             afc_start_pos_d2;
 wire                            afc_end_pos;
 reg                             afc_end_pos_d1;
 reg                             afc_end_pos_d2;
-wire                            afc_start;
+wire                            afc_en_start;
 wire                            clk_gated;
 wire                            clk_en;
 reg                             clk_en_auto;
@@ -101,43 +108,45 @@ reg     [3:0]                   aac_stabletime_m1;
 reg                             a2d_aac_pkd_state_d1;
 reg                             a2d_aac_pkd_state_d2;
 wire                            a2d_aac_pkd_state_sync;
-wire    [3:0]                   afc_ibvco_init;
+wire    [3:0]                   aac_ibvco_init;
 wire    [7:0]                   m;
 
 //---------------------------------------------------------------------------
 // Sync & Cg
 //---------------------------------------------------------------------------
+// afc_start_mux
+assign afc_start_mux            = cdb_bypass ? afc_start : cdb_afc_start;
 // ctrl sync
 always @(posedge clk or negedge rstn)
     if (~rstn) begin
-        afc_en_dly              <= 0;
+        afc_start_dly           <= 0;
         afc_cg_auto_dly         <= 0;
         rg_forceband_en_dly     <= 0;
     end
     else begin
-        afc_en_dly              <= {afc_en_dly[0],              afc_en};
+        afc_start_dly           <= {afc_start_dly[0],           afc_start_mux};
         afc_cg_auto_dly         <= {afc_cg_auto_dly[0],         afc_cg_auto};
         rg_forceband_en_dly     <= {rg_forceband_en_dly[0],     rg_forceband_en};
     end
-// afc_en_sync_d1
+// afc_start_sync_d1
 always @(posedge clk or negedge rstn)
     if (~rstn) begin
-        afc_en_sync_d1          <= 0;
+        afc_start_sync_d1       <= 0;
     end
     else begin
-        afc_en_sync_d1          <= afc_en_sync;
+        afc_start_sync_d1       <= afc_start_sync;
     end
-// afc_en_pos_dly
+// afc_start_pos_dly
 always @(posedge clk or negedge rstn)
     if (~rstn) begin
-        afc_en_pos_d1           <= 0;
-        afc_en_pos_d2           <= 0;
+        afc_start_pos_d1        <= 0;
+        afc_start_pos_d2        <= 0;
         afc_end_pos_d1          <= 0;
         afc_end_pos_d2          <= 0;
     end
     else begin
-        afc_en_pos_d1           <= afc_en_pos;
-        afc_en_pos_d2           <= afc_en_pos_d1;
+        afc_start_pos_d1        <= afc_start_pos;
+        afc_start_pos_d2        <= afc_start_pos_d1;
         afc_end_pos_d1          <= afc_end_pos;
         afc_end_pos_d2          <= afc_end_pos_d1;
     end
@@ -146,18 +155,18 @@ always @(posedge clk or negedge rstn)
     if (~rstn) begin
         clk_en_auto             <= 0;
     end
-    else if (afc_en_pos) begin
+    else if (afc_start_pos) begin
         clk_en_auto             <= 1;
     end
     else if (afc_end_pos_d2) begin
         clk_en_auto             <= 0;
     end
 // sync
-assign afc_en_sync              = afc_en_dly[1];
+assign afc_start_sync           = afc_start_dly[1];
 assign afc_cg_auto_sync         = afc_cg_auto_dly[1];
 assign rg_forceband_en_sync     = rg_forceband_en_dly[1];
-assign afc_en_pos               = afc_en_sync & (~afc_en_sync_d1);
-assign afc_start                = afc_en_pos_d2 & (~rg_forceband_en_sync);
+assign afc_start_pos            = afc_start_sync & (~afc_start_sync_d1);
+assign afc_en_start             = afc_start_pos_d2 & (~rg_forceband_en_sync);
 assign afc_end_pos              = st_curr == AFC_END;
 assign clk_en                   = afc_cg_auto_sync ? clk_en_auto : 1'b1;
 // cg
@@ -192,8 +201,10 @@ assign afc_cnt_end              = (temp_cnt == rg_afc_cnt_time[6:0]);
 assign afc_aac_2t_end           = (temp_cnt == 6'h1);
 // afc_aac_t1_end
 assign afc_aac_t1_end           = (temp_cnt == {3'h0, aac_stabletime_m1});
-// afc_ibvco_init
-assign afc_ibvco_init           = trx ? rg_ini_ibsel_tx : rg_ini_ibsel_rx;
+// aac_ibvco_init
+assign aac_ibvco_init           = trx ? rg_ini_ibsel_tx     : rg_ini_ibsel_rx;
+// aac_comp_vref
+assign aac_comp_vref            = trx ? rg_aac_vrefsel_tx   : rg_aac_vrefsel_rx;
 //---------------------------------------------------------------------------
 // N_DEC
 //---------------------------------------------------------------------------
@@ -221,7 +232,7 @@ always @(posedge clk_gated or negedge rstn)
         ndec_acc <= 0;
         ndec_reg <= 0;
     end
-    else if (st_curr == IDLE && afc_start) begin
+    else if (st_curr == IDLE && afc_en_start) begin
         ndec_en <= 1;
         ndec_acc <= 0;
         ndec_cnt <= 0;
@@ -252,7 +263,7 @@ always @(*) begin
     // translate
     case (st_curr)
         IDLE: begin
-            if (afc_start) begin // tbd ??? posedge ??
+            if (afc_en_start) begin // tbd ??? posedge ??
                 st_next = AFC_CAPBAND_INIT;
             end
         end
@@ -317,7 +328,7 @@ always @(*) begin
         AFC_AAC_IBVCO_UPDATE: begin
             if (a2d_aac_pkd_state_sync == 0)
                 st_next = AFC_AAC_END_T1;
-            else if (afc_ibvco == 4'h0)
+            else if (aac_ibvco == 4'h0)
                 st_next = AFC_AAC_END_T1;
             else
                 st_next = AFC_AAC_DLY_T1;
@@ -339,7 +350,7 @@ end
 always @(posedge clk_gated or negedge rstn)
     if (~rstn)
         afc_stage <= 1'b0;
-    else if (st_curr == IDLE && afc_start) // init
+    else if (st_curr == IDLE && afc_en_start) // init
         afc_stage <= 1'b0;
     else if (st_curr == AFC_AAC_END_T1 && afc_aac_t1_end) // toggle
         afc_stage <= 1'b1;
@@ -365,7 +376,7 @@ always @(posedge clk_gated or negedge rstn)
 always @(posedge clk_gated or negedge rstn)
     if (~rstn)
         loop_cnt <= 0;
-    else if (st_curr == IDLE && afc_start)
+    else if (st_curr == IDLE && afc_en_start)
         loop_cnt <= 0;
     else if (st_curr == AFC_AAC_END_T1 && afc_aac_t1_end)
         loop_cnt <= 0;
@@ -383,7 +394,7 @@ always @(posedge clk_gated or negedge rstn)
         err_min_abs <= 14'h3fff;
         vco_capband_opt <= 7'b100_0000;
     end
-    else if (st_curr == IDLE && afc_start) begin // init of afc1
+    else if (st_curr == IDLE && afc_en_start) begin // init of afc1
         err_min_abs <= 14'h3fff;
         vco_capband_opt <= 7'b100_0000;
     end
@@ -404,7 +415,7 @@ always @(posedge clk_gated or negedge rstn)
     else if (rg_forceband_en_sync) begin
         afc_vco_capband <= rg_vco_capband;
     end
-    else if (st_curr == IDLE && afc_start) begin
+    else if (st_curr == IDLE && afc_en_start) begin
         afc_vco_capband <= 7'b100_0000;
     end
     else if (st_curr == AFC_CAPBAND_INIT) begin
@@ -487,7 +498,7 @@ always @(posedge clk_gated or negedge rstn)
     else if (rg_forceband_en_sync)
         afc_finish <= 0;
     //else if (st_curr != IDLE)
-    else if (st_curr == IDLE & afc_start)
+    else if (st_curr == IDLE & afc_en_start)
         afc_finish <= 0;
     else if (st_curr == AFC_END)
         afc_finish <= 1;
@@ -511,20 +522,30 @@ always @(posedge clk_gated or negedge rstn)
     end
 // a2d_aac_pkd_state_sync
 assign a2d_aac_pkd_state_sync   = a2d_aac_pkd_state_d2;
-// afc_ibvco
+// aac_ibvco
 always @(posedge clk_gated or negedge rstn)
     if (~rstn)
-        afc_ibvco <= afc_ibvco_init;
-    else if (st_curr == IDLE && afc_start) // init
-        afc_ibvco <= afc_ibvco_init;
+        aac_ibvco <= aac_ibvco_init;
+    else if (st_curr == IDLE && afc_en_start) // init
+        aac_ibvco <= aac_ibvco_init;
     else if (st_curr == AFC_AAC_IBVCO_UPDATE) begin // update
         if (a2d_aac_pkd_state_sync == 0) begin // finish
-            afc_ibvco <= (afc_ibvco == 4'b1111) ? 4'b1111 : (afc_ibvco + 1);
+            aac_ibvco <= (aac_ibvco == 4'b1111) ? 4'b1111 : (aac_ibvco + 1);
         end
-        else if (a2d_aac_pkd_state_sync == 1 && afc_ibvco != 0) begin // update
-            afc_ibvco <= afc_ibvco - 1;
+        else if (a2d_aac_pkd_state_sync == 1 && aac_ibvco != 0) begin // update
+            aac_ibvco <= aac_ibvco - 1;
         end
     end
+// aac_comp_en
+always @(posedge clk_gated or negedge rstn)
+    if (~rstn)
+        aac_comp_en <= 0;
+    else if (st_curr == IDLE && afc_en_start) // init
+        aac_comp_en <= 0;
+    else if (st_curr == AFC_AAC_START) // update
+        aac_comp_en <= 1;
+    else if ((st_curr == AFC_AAC_END_T1 && afc_aac_t1_end) || (st_curr == AFC_END)) // update
+        aac_comp_en <= 0;
 
 endmodule
 

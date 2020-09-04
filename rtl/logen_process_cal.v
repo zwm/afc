@@ -2,7 +2,7 @@ module logen_process_cal (
     input                       rstn,   // logen_rstn,
     input                       clk,
     // reg
-    input                       logen_en,
+    input                       logen_start,
     input                       rg_logen_cal_bypass,
     input       [1:0]           rg_logen_cnt_sel,
     input       [2:0]           rg_logen_vsel_man,  // mannual mode
@@ -36,24 +36,25 @@ localparam LOGEN_LDOVSEL_UPDATE = 3'd6;
 reg     [2:0]                   st_curr;
 reg     [2:0]                   st_next;
 // cnt
-reg     [2:0]                   logen_en_dly;
-wire                            logen_en_pos;
-wire                            logen_start;
+reg     [2:0]                   logen_start_dly;
+wire                            logen_start_pos;
+wire                            logen_start_sync;
 wire                            logen_cnt_end;
 reg     [4:0]                   temp_cnt;
 reg     [4:0]                   logen_cnt_m1;
 reg     [2:0]                   ldo_logen_vsel_next;
 wire    [5:0]                   cntr_val;
+wire                            clk_gated;
 
-// logen_en_dly
+// logen_start_dly
 always @(posedge clk or negedge rstn)
     if (~rstn)
-        logen_en_dly <= 0;
+        logen_start_dly <= 0;
     else
-        logen_en_dly <= {logen_dly[1:0], logen_en};
-// logen_en_pos
-assign logen_en_pos     = (~logen_en_dly[2]) & logen_en_dly[1];
-assign logen_start      = logen_en_pos;
+        logen_start_dly <= {logen_start_dly[1:0], logen_start};
+// logen_start_pos
+assign logen_start_pos      = (~logen_start_dly[2]) & logen_start_dly[1];
+assign logen_start_sync     = logen_start_pos;
 // logen_cnt_m1
 always @(*)
     case (rg_logen_cnt_sel)
@@ -64,6 +65,9 @@ always @(*)
     endcase
 // logen_cnt_end
 assign logen_cnt_end    = (temp_cnt == logen_cnt_m1);
+
+// cg
+assign clk_gated        = clk;
 
 //---------------------------------------------------------------------------
 // FSM
@@ -81,7 +85,7 @@ always @(*) begin
     // translate
     case (st_curr)
         LOGEN_IDLE: begin
-            if (logen_start) begin
+            if (logen_start_sync) begin
                 st_next = LOGEN_CNTR_RSTN;
             end
         end
@@ -99,7 +103,7 @@ always @(*) begin
             st_next = LOGEN_CNTR_DATASYN;
         end
         LOGEN_CNTR_DATASYN: begin
-            st_next = LOGEN_CAPBAND_UPDATE;
+            st_next = LOGEN_LDOVSEL_UPDATE;
         end
         LOGEN_LDOVSEL_UPDATE: begin
             st_next = LOGEN_IDLE;

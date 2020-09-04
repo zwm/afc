@@ -2,11 +2,11 @@ Magic 271485
 Revision Verdi3_L-2016.06-1
 
 ; Window Layout <x> <y> <width> <height> <signalwidth> <valuewidth>
-viewPort 0 25 1918 850 246 65
+viewPort 0 28 1918 746 246 65
 
 ; File list:
 ; openDirFile [-d delimiter] [-s time_offset] [-rf auto_bus_rule_file] path_name file_name
-openDirFile -d / -i 0 "" "/home/xiaotu/github/afc/sim/tb_top.fsdb"
+openDirFile -d / "" "/home/xiaotu/github/afc/sim/tb_top.fsdb"
 
 ; file time scale:
 ; fileTimeScale ### s|ms|us|ns|ps
@@ -16,10 +16,12 @@ signalSpacing 5
 
 ; windowTimeUnit is used for zoom, cursor & marker
 ; waveform viewport range
-zoom 0.000000 41118817.000000
+zoom 0.000000 428543.000000
 cursor 13942900.000000
 marker 566700.000000
 
+; user define markers
+; userMarker time_pos marker_name color linestyle
 ; visible top row signal index
 top 0
 ; marker line index
@@ -67,16 +69,15 @@ activeDirFile "" "/home/xiaotu/github/afc/sim/tb_top.fsdb"
 addSignal -h 15 /tb_top/u_afc/rstn
 addSignal -h 15 -holdScope clk
 addSignal -h 15 -holdScope afc_cg_auto
-addSignal -h 15 -holdScope afc_en
 addSignal -h 15 -holdScope trx
 addSignal -h 15 -UNSIGNED -HEX -holdScope divr[15:0]
 addSignal -h 15 -holdScope afc_finish
 addSignal -h 15 -UNSIGNED -HEX -holdScope afc_minerr[13:0]
 addSignal -h 15 -UNSIGNED -HEX -holdScope afc_vco_capband[6:0]
 addSignal -h 15 -UNSIGNED -UDEC /tb_top/case_num[31:0]
+addSignal -h 15 /tb_top/u_afc/afc_start
 addGroup "G2"
-addSignal -h 15 /tb_top/u_afc/afc_en
-addSignal -h 15 -holdScope ndec_en
+addSignal -h 15 /tb_top/u_afc/ndec_en
 addSignal -h 15 -UNSIGNED -HEX -holdScope ndec_cnt[2:0]
 addSignal -h 15 -UNSIGNED -HEX -holdScope ndec_reg[13:0]
 addGroup "G3"

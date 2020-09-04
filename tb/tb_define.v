@@ -2,6 +2,11 @@
 `define DUMP_FSDB               1
 //`define DUMP_ARRAY              1
 
+//`define TEST_AFC
+
+`define TEST_LOGEN
+
+
 `define CASE_START              0
 //`define CASE_START              201             // AFC RX: 0~201
 //`define CASE_START              404             // AAC: 404~404+31
